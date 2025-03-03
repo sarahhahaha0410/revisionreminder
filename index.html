@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Memory Curve Revision Planner</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#5D5CDE',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.05);
+            border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: rgba(93, 92, 222, 0.5);
+            border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: rgba(93, 92, 222, 0.7);
+        }
+    </style>
+</head>
+<body class="bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 min-h-screen transition-colors">
+    <div class="container mx-auto p-4 md:p-6 max-w-4xl">
+        <div class="flex justify-between items-center mb-6">
+            <h1 class="text-3xl font-bold text-center text-primary">Memory Curve Revision Planner</h1>
+            <div id="save-indicator" class="hidden text-sm text-gray-500 dark:text-gray-400 animate-pulse">
+                <i class="fas fa-save mr-1"></i> Saving...
+            </div>
+        </div>
+        
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 md:p-6 mb-6">
+            <h2 class="text-xl font-semibold mb-4">Add New Study Topic</h2>
+            <form id="study-form" class="space-y-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label for="topic" class="block text-sm font-medium mb-1">Topic Name</label>
+                        <input type="text" id="topic" name="topic" required 
+                            class="w-full px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 
+                            bg-white dark:bg-gray-700 text-base focus:ring-2 focus:ring-primary focus:border-primary">
+                    </div>
+                    <div>
+                        <label for="initial-date" class="block text-sm font-medium mb-1">Initial Study Date</label>
+                        <input type="date" id="initial-date" name="initial-date" required
+                            class="w-full px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 
+                            bg-white dark:bg-gray-700 text-base focus:ring-2 focus:ring-primary focus:border-primary">
+                    </div>
+                </div>
+                
+                <div>
+                    <label for="exam-date" class="block text-sm font-medium mb-1">Exam Date (Optional)</label>
+                    <input type="date" id="exam-date" name="exam-date"
+                        class="w-full px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 
+                        bg-white dark:bg-gray-700 text-base focus:ring-2 focus:ring-primary focus:border-primary">
+                </div>
+                
+                <div class="flex items-center space-x-2">
+                    <button type="submit" 
+                        class="px-6 py-2 bg-primary hover:bg-opacity-90 text-white rounded-md 
+                        focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-colors">
+                        Generate Revision Schedule
+                    </button>
+                    <button type="button" id="clear-all" 
+                        class="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md 
+                        hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 
+                        focus:ring-gray-500 transition-colors">
+                        Clear All
+                    </button>
+                </div>
+            </form>
+        </div>
+        
+        <div id="schedule-container" class="space-y-4">
+            <h2 class="text-xl font-semibold mb-2">Your Revision Schedule</h2>
+            <p id="empty-message" class="text-gray-500 dark:text-gray-400 italic">No study topics added yet. Add a topic above to get started.</p>
+            <div id="topics-container" class="space-y-6 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar"></div>
+        </div>
+    </div>
+
+    <div id="info-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
+            <div class="flex justify-between items-start mb-4">
+                <h3 class="text-lg font-semibold" id="modal-title">Review Session Focus</h3>
+                <button id="close-modal" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div id="modal-content" class="text-gray-700 dark:text-gray-300"></div>
+            <div class="mt-6 flex justify-end">
+                <button id="modal-close-btn" class="px-4 py-2 bg-primary text-white rounded-md hover:bg-opacity-90">
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Check for dark mode preference
+        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            document.documentElement.classList.add('dark');
+        }
+        
+        // Initialize variables
+        let studyTopics = [];
+        const reviewSchedule = [
+            { days: 1, duration: "30-60 minutes", focus: "Key concepts and summaries", label: "First Review" },
+            { days: 4, duration: "30-45 minutes", focus: "Flashcards or practice questions", label: "Second Review" },
+            { days: 7, duration: "1 hour", focus: "Teach the material to someone else or explain concepts out loud", label: "Third Review" },
+            { days: 14, duration: "30-60 minutes", focus: "Mind maps or visual aids", label: "Fourth Review" },
+            { days: 30, duration: "1-2 hours", focus: "Comprehensive review, covering all major points", label: "Fifth Review" }
+        ];
+        
+        // Save indicator variables
+        let saveTimeout = null;
+        let isSaving = false;
+        
+        // DOM elements
+        const studyForm = document.getElementById('study-form');
+        const topicsContainer = document.getElementById('topics-container');
+        const emptyMessage = document.getElementById('empty-message');
+        const clearAllBtn = document.getElementById('clear-all');
+        const infoModal = document.getElementById('info-modal');
+        const closeModal = document.getElementById('close-modal');
+        const modalCloseBtn = document.getElementById('modal-close-btn');
+        const modalTitle = document.getElementById('modal-title');
+        const modalContent = document.getElementById('modal-content');
+        
+        // Format date for display
+        function formatDate(dateString) {
+            const options = { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' };
+            return new Date(dateString).toLocaleDateString(undefined, options);
+        }
+        
+        // Calculate review dates
+        function calculateReviewDates(initialDate) {
+            const result = [];
+            const initial = new Date(initialDate);
+            
+            reviewSchedule.forEach(review => {
+                const reviewDate = new Date(initial);
+                reviewDate.setDate(initial.getDate() + review.days);
+                result.push({
+                    date: reviewDate,
+                    ...review,
+                    completed: false
+                });
+            });
+            
+            return result;
+        }
+        
+        // Add final exam review if exam date is provided
+        function addExamReview(reviews, examDate) {
+            if (!examDate) return reviews;
+            
+            const exam = new Date(examDate);
+            const twoDaysBefore = new Date(exam);
+            twoDaysBefore.setDate(exam.getDate() - 2);
+            
+            // Only add final review if it's after the last scheduled review
+            const lastReview = new Date(reviews[reviews.length - 1].date);
+            if (twoDaysBefore > lastReview) {
+                reviews.push({
+                    date: twoDaysBefore,
+                    days: "Before exam",
+                    duration: "1 hour",
+                    focus: "Summary sheets and quick flashcards",
+                    label: "Final Review",
+                    completed: false
+                });
+            }
+            
+            return reviews;
+        }
+        
+        // Render all topics
+        function renderTopics() {
+            topicsContainer.innerHTML = '';
+            emptyMessage.style.display = studyTopics.length === 0 ? 'block' : 'none';
+            
+            studyTopics.forEach((topic, topicIndex) => {
+                const topicEl = document.createElement('div');
+                topicEl.className = 'bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 border-l-4 border-primary';
+                
+                const examInfo = topic.examDate ? 
+                    `<div class="mt-1 text-sm">Exam: <span class="font-medium">${formatDate(topic.examDate)}</span></div>` : '';
+                
+                topicEl.innerHTML = `
+                    <div class="flex justify-between items-start mb-3">
+                        <div>
+                            <h3 class="text-lg font-semibold">${topic.name}</h3>
+                            <div class="text-sm">Initial study: <span class="font-medium">${formatDate(topic.initialDate)}</span></div>
+                            ${examInfo}
+                        </div>
+                        <button class="delete-topic text-gray-400 hover:text-red-500 transition-colors" data-index="${topicIndex}">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                    <div class="space-y-3">
+                        <div class="text-sm font-medium mb-2">Review Schedule:</div>
+                        <div class="space-y-2 review-list"></div>
+                    </div>
+                `;
+                
+                const reviewList = topicEl.querySelector('.review-list');
+                
+                topic.reviews.forEach((review, reviewIndex) => {
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    
+                    const reviewDate = new Date(review.date);
+                    reviewDate.setHours(0, 0, 0, 0);
+                    
+                    // Determine status
+                    let statusClass, statusText;
+                    if (review.completed) {
+                        statusClass = 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200';
+                        statusText = 'Completed';
+                    } else if (reviewDate < today) {
+                        statusClass = 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200';
+                        statusText = 'Missed';
+                    } else if (reviewDate.getTime() === today.getTime()) {
+                        statusClass = 'bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200';
+                        statusText = 'Today';
+                    } else {
+                        statusClass = 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200';
+                        statusText = 'Upcoming';
+                    }
+                    
+                    const reviewItem = document.createElement('div');
+                    reviewItem.className = 'flex flex-col sm:flex-row sm:items-center gap-2 p-3 rounded-md bg-gray-50 dark:bg-gray-700';
+                    reviewItem.innerHTML = `
+                        <div class="flex-grow space-y-1">
+                            <div class="flex justify-between">
+                                <div class="font-medium">${review.label}</div>
+                                <div class="text-sm ${statusClass} px-2 py-0.5 rounded-full">${statusText}</div>
+                            </div>
+                            <div class="text-sm">${formatDate(review.date)} · ${review.duration}</div>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button class="info-btn px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 
+                                rounded hover:bg-gray-100 dark:hover:bg-gray-600" 
+                                data-topic="${topicIndex}" data-review="${reviewIndex}">
+                                <i class="fas fa-info-circle mr-1"></i> Focus
+                            </button>
+                            <button class="complete-btn px-2 py-1 text-xs rounded
+                                ${review.completed ? 
+                                    'bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300' : 
+                                    'bg-primary text-white'}"
+                                data-topic="${topicIndex}" data-review="${reviewIndex}" 
+                                ${review.completed ? 'disabled' : ''}>
+                                ${review.completed ? 'Completed' : 'Mark Complete'}
+                            </button>
+                        </div>
+                    `;
+                    
+                    reviewList.appendChild(reviewItem);
+                });
+                
+                topicsContainer.appendChild(topicEl);
+            });
+            
+            // Add event listeners to buttons
+            document.querySelectorAll('.delete-topic').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const index = parseInt(e.currentTarget.dataset.index);
+                    studyTopics.splice(index, 1);
+                    renderTopics();
+                });
+            });
+            
+            document.querySelectorAll('.complete-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const topicIndex = parseInt(e.currentTarget.dataset.topic);
+                    const reviewIndex = parseInt(e.currentTarget.dataset.review);
+                    studyTopics[topicIndex].reviews[reviewIndex].completed = true;
+                    renderTopics();
+                });
+            });
+            
+            document.querySelectorAll('.info-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const topicIndex = parseInt(e.currentTarget.dataset.topic);
+                    const reviewIndex = parseInt(e.currentTarget.dataset.review);
+                    const review = studyTopics[topicIndex].reviews[reviewIndex];
+                    const topic = studyTopics[topicIndex];
+                    
+                    modalTitle.textContent = `${review.label} - ${topic.name}`;
+                    modalContent.innerHTML = `
+                        <div class="space-y-3">
+                            <div>
+                                <strong>When:</strong> ${formatDate(review.date)}
+                            </div>
+                            <div>
+                                <strong>Duration:</strong> ${review.duration}
+                            </div>
+                            <div>
+                                <strong>Focus:</strong> ${review.focus}
+                            </div>
+                        </div>
+                    `;
+                    
+                    infoModal.classList.remove('hidden');
+                });
+            });
+        }
+        
+        // Form submission handler
+        studyForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const formData = new FormData(studyForm);
+            const topicName = formData.get('topic');
+            const initialDate = formData.get('initial-date');
+            const examDate = formData.get('exam-date') || null;
+            
+            if (topicName && initialDate) {
+                let reviews = calculateReviewDates(initialDate);
+                
+                if (examDate) {
+                    reviews = addExamReview(reviews, examDate);
+                }
+                
+                studyTopics.push({
+                    name: topicName,
+                    initialDate: initialDate,
+                    examDate: examDate,
+                    reviews: reviews
+                });
+                
+                studyForm.reset();
+                renderTopics();
+                saveToURL();
+            }
+        });
+        
+        // Clear all button handler
+        clearAllBtn.addEventListener('click', () => {
+            if (confirm('Are you sure you want to clear all topics?')) {
+                studyTopics = [];
+                renderTopics();
+                saveToURL();
+            }
+        });
+        
+        // Modal close handlers
+        closeModal.addEventListener('click', () => {
+            infoModal.classList.add('hidden');
+        });
+        
+        modalCloseBtn.addEventListener('click', () => {
+            infoModal.classList.add('hidden');
+        });
+        
+        // Close modal when clicking outside
+        infoModal.addEventListener('click', (e) => {
+            if (e.target === infoModal) {
+                infoModal.classList.add('hidden');
+            }
+        });
+        
+        // Functions for saving/loading data via URL hash
+        function saveToURL() {
+            if (saveTimeout) {
+                clearTimeout(saveTimeout);
+            }
+            
+            // Show saving indicator
+            const saveIndicator = document.getElementById('save-indicator');
+            saveIndicator.classList.remove('hidden');
+            isSaving = true;
+            
+            // Use timeout to prevent saving on every small change
+            saveTimeout = setTimeout(() => {
+                try {
+                    // Create a simplified version of the data for storage
+                    const dataToSave = studyTopics.map(topic => {
+                        return {
+                            n: topic.name,
+                            i: topic.initialDate,
+                            e: topic.examDate,
+                            r: topic.reviews.map(r => ({
+                                d: r.date,
+                                c: r.completed
+                            }))
+                        };
+                    });
+                    
+                    // Convert to JSON and encode for URL
+                    const jsonData = JSON.stringify(dataToSave);
+                    const encodedData = encodeURIComponent(jsonData);
+                    
+                    // Set URL hash
+                    window.location.hash = encodedData;
+                    
+                    // Hide saving indicator after a moment
+                    setTimeout(() => {
+                        saveIndicator.classList.add('hidden');
+                        isSaving = false;
+                    }, 500);
+                } catch (error) {
+                    console.error('Error saving data:', error);
+                    saveIndicator.classList.add('hidden');
+                    isSaving = false;
+                }
+            }, 300);
+        }
+        
+        function loadFromURL() {
+            try {
+                // Get data from URL hash
+                const hash = window.location.hash.slice(1);
+                if (!hash) return;
+                
+                // Decode and parse the data
+                const jsonData = decodeURIComponent(hash);
+                const loadedData = JSON.parse(jsonData);
+                
+                // Convert the compact data back to full format
+                studyTopics = loadedData.map(item => {
+                    // Process each review
+                    const reviews = item.r.map(r => {
+                        // Find the original review template
+                        const reviewDate = new Date(r.d);
+                        
+                        // Get the days difference from initial date
+                        const initialDate = new Date(item.i);
+                        const daysDiff = Math.round((reviewDate - initialDate) / (1000 * 60 * 60 * 24));
+                        
+                        // Find the matching review template or use a default
+                        let reviewTemplate = reviewSchedule.find(t => t.days === daysDiff);
+                        
+                        // If it's the exam review
+                        if (!reviewTemplate && item.e && daysDiff > reviewSchedule[reviewSchedule.length - 1].days) {
+                            reviewTemplate = {
+                                days: "Before exam",
+                                duration: "1 hour",
+                                focus: "Summary sheets and quick flashcards",
+                                label: "Final Review"
+                            };
+                        }
+                        
+                        // Fallback if no template is found
+                        if (!reviewTemplate) {
+                            reviewTemplate = {
+                                days: daysDiff,
+                                duration: "30-60 minutes",
+                                focus: "General review",
+                                label: `Review ${daysDiff} days after`
+                            };
+                        }
+                        
+                        return {
+                            date: reviewDate,
+                            ...reviewTemplate,
+                            completed: r.c
+                        };
+                    });
+                    
+                    return {
+                        name: item.n,
+                        initialDate: item.i,
+                        examDate: item.e,
+                        reviews: reviews
+                    };
+                });
+                
+                renderTopics();
+            } catch (error) {
+                console.error('Error loading data:', error);
+            }
+        }
+        
+        // Event listeners for marking reviews as complete and deleting topics
+        document.addEventListener('click', (e) => {
+            // Find if the click was on a complete button or delete button
+            const completeBtn = e.target.closest('.complete-btn');
+            const deleteBtn = e.target.closest('.delete-topic');
+            
+            if (completeBtn && !completeBtn.disabled) {
+                const topicIndex = parseInt(completeBtn.dataset.topic);
+                const reviewIndex = parseInt(completeBtn.dataset.review);
+                
+                studyTopics[topicIndex].reviews[reviewIndex].completed = true;
+                renderTopics();
+                saveToURL();
+            } else if (deleteBtn) {
+                const index = parseInt(deleteBtn.dataset.index);
+                studyTopics.splice(index, 1);
+                renderTopics();
+                saveToURL();
+            }
+        });
+        
+        // Initialize - load data from URL if available
+        loadFromURL();
+        if (studyTopics.length === 0) {
+            renderTopics();
+        }
+    </script>
+</body>
+</html>
